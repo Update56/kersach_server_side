@@ -45,17 +45,34 @@ func main() {
 			fmt.Println(err)
 			continue
 		}
-		connMap[string(i)] = conn
 		//вызываем функцию в отдельной горутине
 		go connProc(conn, connMap)
-
 	}
 }
 
 func connProc(conn net.Conn, connMap map[string]net.Conn) {
+
+	//3.Отправка изменённого списка
+	defer sendCurrentList(connMap)
+
+	//2.Закрытие соединения
 	defer conn.Close()
-	enc := gob.NewEncoder(conn)
-	enc.Encode(formSpecialMessages("001", keysToString(connMap)))
+	//объявляем входной декодер с потоком в виде подключения
+	dec := gob.NewDecoder(conn)
+
+	//пустая структура для сообщения
+	recMess := Message{}
+
+	//десериализация полученного "нулевого" сообщения
+	dec.Decode(&recMess)
+	//объявляем новую запись в хэш-мапе
+	connMap[recMess.Sender] = conn
+	//лог в консоль
+	fmt.Println("User:", recMess.Sender, "connection")
+
+	//1.Удаление записи
+	defer delete(connMap, recMess.Sender)
+
 	for {
 		time.Sleep(time.Second * 5)
 	}
@@ -81,4 +98,15 @@ func keysToString(connMap map[string]net.Conn) string {
 func formSpecialMessages(code string, text string) Message {
 	messText := (code + "\n" + text)
 	return Message{serverName, clientName, messText}
+}
+
+// функция отправки текущего списка пользователей
+func sendCurrentList(connMap map[string]net.Conn) {
+	//формируем сообщение со текущим списком пользователей
+	currentList := formSpecialMessages("001", keysToString(connMap))
+	//проходимся по хэш-таблице и всем отправляем актуалный список пользователей
+	for _, conn := range connMap {
+		enc := gob.NewEncoder(conn)
+		enc.Encode(currentList)
+	}
 }
