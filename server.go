@@ -4,8 +4,11 @@ import (
 	"crypto/tls"
 	"encoding/gob"
 	"fmt"
+	"log"
 	"net"
+	"os"
 	"strings"
+	"time"
 )
 
 // структура сообщения
@@ -14,6 +17,8 @@ type Message struct {
 	Receiver string
 	Text     string
 }
+
+// переменная файла логирования
 
 // зарезервированное спец.имя клиента
 const clientName string = "client"
@@ -39,7 +44,18 @@ func main() {
 	}
 	//закрытие порта в конце выполнения программы
 	defer listener.Close()
-	fmt.Println("Server is listening...")
+	//открываем файл для записи
+	file, err := os.OpenFile((time.Now().Format("02.01.06_15.04.05_") + "server.log"), os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		fmt.Println("Unable to create file:", err)
+		os.Exit(1)
+	}
+	defer file.Close()
+
+	//создаём логер
+	infoLog := log.New(file, "INFO ", log.Ldate|log.Ltime)
+	infoLog.Println("Server is listening...")
+
 	//создание хэш-таблицы ключ - никнейм, значение - подключение
 	connMap := make(map[string]net.Conn)
 
@@ -52,11 +68,11 @@ func main() {
 			continue
 		}
 		//вызываем функцию в отдельной горутине
-		go connProc(conn, connMap)
+		go connProc(conn, connMap, infoLog)
 	}
 }
 
-func connProc(conn net.Conn, connMap map[string]net.Conn) {
+func connProc(conn net.Conn, connMap map[string]net.Conn, infoLog *log.Logger) {
 	//3.Отправка изменённого списка
 	defer sendCurrentList(connMap)
 	//2.Закрытие соединения
@@ -71,6 +87,8 @@ func connProc(conn net.Conn, connMap map[string]net.Conn) {
 	connMap[recMess.Sender] = conn
 	//лог в консоль
 	fmt.Println("User:", recMess.Sender, "connected")
+	//лог в файл
+	infoLog.Println("User:", recMess.Sender, "connected")
 
 	sendCurrentList(connMap)
 	//1.Удаление записи
@@ -86,12 +104,16 @@ func connProc(conn net.Conn, connMap map[string]net.Conn) {
 		//обработка отключения от сервера
 		if recMess.Receiver == serverName && len(recMess.Text) >= len("Disconnect") {
 			if recMess.Text[:len("Disconnect")] == "Disconnect" {
+				//логирование
+				infoLog.Println("User:", recMess.Sender, "disconnected")
 				fmt.Println("User:", recMess.Sender, "disconnected")
 				return
 			}
 		}
 		//создаём выходной енкодер с соединение соотвествующим отправителю
 		enc := gob.NewEncoder(connMap[recMess.Receiver])
+		//лог сообщения
+		infoLog.Println(recMess.Receiver, "to", recMess.Receiver, ": ", recMess.Text)
 		//передача сообщения
 		enc.Encode(recMess)
 	}
