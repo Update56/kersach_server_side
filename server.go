@@ -57,10 +57,8 @@ func main() {
 }
 
 func connProc(conn net.Conn, connMap map[string]net.Conn) {
-
 	//3.Отправка изменённого списка
 	defer sendCurrentList(connMap)
-
 	//2.Закрытие соединения
 	defer conn.Close()
 	//объявляем входной декодер с потоком в виде подключения
@@ -72,7 +70,7 @@ func connProc(conn net.Conn, connMap map[string]net.Conn) {
 	//объявляем новую запись в хэш-мапе
 	connMap[recMess.Sender] = conn
 	//лог в консоль
-	fmt.Println("User:", recMess.Sender, "connection")
+	fmt.Println("User:", recMess.Sender, "connected")
 
 	sendCurrentList(connMap)
 	//1.Удаление записи
@@ -85,6 +83,13 @@ func connProc(conn net.Conn, connMap map[string]net.Conn) {
 		recMess := Message{}
 		//десериализация полученного сообщения
 		dec.Decode(&recMess)
+		//обработка отключения от сервера
+		if recMess.Receiver == serverName && len(recMess.Text) >= len("Disconnect") {
+			if recMess.Text[:len("Disconnect")] == "Disconnect" {
+				fmt.Println("User:", recMess.Sender, "disconnected")
+				return
+			}
+		}
 		//создаём выходной енкодер с соединение соотвествующим отправителю
 		enc := gob.NewEncoder(connMap[recMess.Receiver])
 		//передача сообщения
